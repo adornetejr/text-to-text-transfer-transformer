@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,36 +20,55 @@ import os
 from absl.testing import absltest
 import numpy as np
 import pandas as pd
+import seqio
 from t5.evaluation import eval_utils
 import tensorflow.compat.v1 as tf
-
-tf.disable_v2_behavior()
 
 
 class EvalUtilsTest(absltest.TestCase):
 
   def test_parse_events_files(self):
     tb_summary_dir = self.create_tempdir()
-    tf.disable_eager_execution()  # Needed in pytest.
-    summary_writer = tf.summary.FileWriter(tb_summary_dir.full_path)
-    tags = [
-        "eval/foo_task/accuracy",
-        "eval/foo_task/accuracy",
-        "loss",
-    ]
-    values = [1., 2., 3.]
-    steps = [20, 30, 40]
-    for tag, value, step in zip(tags, values, steps):
-      summary = tf.Summary()
-      summary.value.add(tag=tag, simple_value=value)
-      summary_writer.add_summary(summary, step)
-    summary_writer.flush()
+    with tf.Graph().as_default():
+      summary_writer = tf.summary.FileWriter(tb_summary_dir.full_path)
+      tags = [
+          "eval/foo_task/accuracy",
+          "eval/foo_task/accuracy",
+          "loss",
+      ]
+      values = [1., 2., 3.]
+      steps = [20, 30, 40]
+      for tag, value, step in zip(tags, values, steps):
+        summary = tf.Summary()
+        summary.value.add(tag=tag, simple_value=value)
+        summary_writer.add_summary(summary, step)
+      summary_writer.flush()
     events = eval_utils.parse_events_files(tb_summary_dir.full_path)
     self.assertDictEqual(
         events,
         {
             "eval/foo_task/accuracy": [(20, 1.), (30, 2.)],
             "loss": [(40, 3.)],
+        },
+    )
+
+  def test_parse_events_files_seqio(self):
+    tb_summary_dir = self.create_tempdir()
+    metrics = [{"accuracy": 1.}, {"accuracy": 2.}]
+    steps = [20, 30]
+
+    logger = seqio.evaluation.TensorboardLogging(tb_summary_dir.full_path)
+    for metric, step in zip(metrics, steps):
+      logger(task_metrics=metric, step=step, task_name="foo_task")
+
+    events = eval_utils.parse_events_files(
+        os.path.join(tb_summary_dir.full_path, "foo_task"),
+        seqio_summaries=True)
+
+    self.assertDictEqual(
+        events,
+        {
+            "eval/accuracy": [(20, 1.), (30, 2.)],
         },
     )
 
@@ -65,6 +84,22 @@ class EvalUtilsTest(absltest.TestCase):
         {
             "foo_task/accuracy": [(20, 1.), (30, 2.)],
             "bar_task/sequence_accuracy": [(10, 3.)],
+        }
+    )
+
+  def test_get_eval_metric_values_seqio(self):
+    events = {
+        "eval/accuracy": [(20, 1.), (30, 2.)],
+        "eval/sequence_accuracy": [(10, 3.)],
+        "loss": [(40, 3.)],
+    }
+    eval_values = eval_utils.get_eval_metric_values(
+        events, task_name="foo_task")
+    self.assertDictEqual(
+        eval_values,
+        {
+            "foo_task/accuracy": [(20, 1.), (30, 2.)],
+            "foo_task/sequence_accuracy": [(10, 3.)],
         }
     )
 
@@ -134,7 +169,7 @@ class EvalUtilsTest(absltest.TestCase):
     df.index.name = "step"
     output_file = os.path.join(self.create_tempdir().full_path, "results.csv")
     eval_utils.log_csv(df, output_file=output_file)
-    with tf.gfile.Open(output_file) as f:
+    with tf.io.gfile.GFile(output_file) as f:
       output = f.read()
     expected = """step,{},{},{}
 10,,3.000,4.000

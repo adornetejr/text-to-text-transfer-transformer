@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ import os
 
 from absl import app
 from absl import flags
-from t5.data.utils import TaskRegistry
-import tensorflow.compat.v1 as tf
+import t5.data
+import tensorflow as tf
 import tensorflow_datasets as tfds
 
 FLAGS = flags.FLAGS
@@ -45,6 +45,7 @@ flags.DEFINE_string("out_dir", None, "Path to write output file.")
 flags.DEFINE_string("split", "test", "Split, should typically be test.")
 flags.DEFINE_boolean("super", False, "Whether to make SuperGLUE-style file.")
 flags.DEFINE_boolean("cached", True, "Whether to used cached dataset.")
+flags.DEFINE_list("additional_task_cache_dirs", [], "Dirs with cached tasks.")
 
 FILE_NAME_MAP = {
     "boolq": "BoolQ",
@@ -71,11 +72,12 @@ _FAKE_LEN = {"inputs": 512, "targets": 512}
 
 
 def main(_):
+  t5.data.add_global_cache_dirs(FLAGS.additional_task_cache_dirs)
   out_file = os.path.join(
       FLAGS.out_dir, "{}.{{extension}}".format(FILE_NAME_MAP[FLAGS.tfds_name])
   )
 
-  ds = TaskRegistry.get_dataset(
+  ds = t5.data.TaskRegistry.get_dataset(
       FLAGS.task, _FAKE_LEN, FLAGS.split, use_cached=FLAGS.cached, shuffle=False
   )
   examples = [{k: v.numpy() for k, v in ex.items()} for ex in ds]
@@ -150,5 +152,4 @@ def main(_):
       tsv_writer.writerows([i, p] for i, p in zip(indices, predictions))
 
 if __name__ == "__main__":
-  tf.enable_eager_execution()
   app.run(main)

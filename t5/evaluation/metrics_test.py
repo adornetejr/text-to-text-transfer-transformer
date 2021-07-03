@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 """Tests for t5.evaluation.metrics."""
 
 from absl.testing import absltest
+import sklearn.metrics
+
 from t5.evaluation import metrics
 from t5.evaluation import test_utils
 
@@ -147,7 +149,6 @@ class MetricsTest(test_utils.BaseMetricsTest):
             "context": context
         }], [ans_span]), {"em": 0, "f1": 0})
 
-
   def test_sequence_accuracy(self):
     s1 = "this is a string."
     s2 = "this is a completely different string."
@@ -175,11 +176,6 @@ class MetricsTest(test_utils.BaseMetricsTest):
     self.assertDictClose(
         metrics.spearman_corrcoef([0, 2, 1], [0, 1, 2]),
         {"spearman_corrcoef": 50.})
-
-  def test_matthews_corrcoef(self):
-    self.assertDictClose(
-        metrics.matthews_corrcoef([0, 0, 2, 1], [0, 1, 2, 1]),
-        {"matthews_corrcoef": 70.})
 
   def test_f1_score_with_invalid(self):
     self.assertDictClose(
@@ -218,13 +214,414 @@ class MetricsTest(test_utils.BaseMetricsTest):
   def test_auc(self):
     self.assertDictClose(
         metrics.auc([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8]),
-        {"auc": 0.75})
+        {"auc-roc": 0.75,
+         "auc-pr": 0.8333},
+        places=4,
+    )
 
   def test_auc_non_binary(self):
     self.assertDictClose(
         metrics.auc([0.0, 0.2, 0.5, 0.7], [0.1, 0.4, 0.35, 0.8],
                     targets_threshold=0.5),
-        {"auc": 0.75})
+        {"auc-roc": 0.75,
+         "auc-pr": 0.8333},
+        places=4,
+    )
+
+  def test_sklearn_wrapper(self):
+    mae_fn = metrics.sklearn_metrics_wrapper("mean_absolute_error")
+    y_true = [[0.5, 1], [-1, 1], [7, -6]]
+    y_pred = [[0, 2], [-1, 2], [8, -5]]
+    self.assertDictClose(
+        mae_fn(y_true, y_pred),
+        {"mean_absolute_error": sklearn.metrics.mean_absolute_error(y_true,
+                                                                    y_pred)})
+
+    hamming_fn = metrics.sklearn_metrics_wrapper(
+        "hamming_loss",
+        metric_dict_str="hamming_100x",
+        metric_post_process_fn=lambda x: 100 * x)
+    y_true = [1, 2, 3, 4]
+    y_pred = [2, 2, 3, 4]
+    self.assertDictClose(
+        hamming_fn(y_true, y_pred),
+        {"hamming_100x": 100 * sklearn.metrics.hamming_loss(y_true, y_pred)})
+
+    y_true = [0, 0, 2, 1]
+    y_pred = [0, 1, 2, 1]
+    matthews_corrcoef_fn = metrics.sklearn_metrics_wrapper(
+        "matthews_corrcoef", metric_post_process_fn=lambda x: 100 * x)
+    self.assertDictClose(
+        matthews_corrcoef_fn(y_true, y_pred),
+        {"matthews_corrcoef": 70.})
+
+  def test_rank_classification_default_weights(self):
+
+    # num_classes = 2
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 0
+                ((0, 0), True, 1.0),
+                ((0, 1), False, 1.0),
+                # 1
+                ((1, 0), False, 1.0),
+                ((1, 1), True, 1.0),
+                # 0
+                ((2, 0), True, 1.0),
+                ((2, 1), False, 1.0),
+                # 0
+                ((3, 0), True, 1.0),
+                ((3, 1), False, 1.0),
+            ],
+            [
+                0.1, 0.5,
+                1.0, 1.1,
+                0.3, 0.1,
+                0.6, 0.5
+            ],
+            num_classes=2),
+        {
+            "accuracy": 75.,
+            "auc-pr": 50.0,
+            "auc-roc": 66.6666667,
+            "f1": 66.6666667,
+        })
+
+    # num_classes = 3
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 1
+                ((0, 0), False, 1.0),
+                ((0, 1), True, 1.0),
+                ((0, 2), False, 1.0),
+                # 0
+                ((1, 0), True, 1.0),
+                ((1, 1), False, 1.0),
+                ((1, 2), False, 1.0),
+                # 2
+                ((2, 0), False, 1.0),
+                ((2, 1), False, 1.0),
+                ((2, 2), True, 1.0)
+            ],
+            [
+                0.1, 0.5, 0.0,
+                -2, -1, -3,
+                3.0, 3.1, 3.2
+            ],
+            num_classes=3),
+        {
+            "accuracy": 66.6666667,
+            "mean_3class_f1": 55.5555556,
+        })
+
+    # num_classes = 3, multi-label
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 1
+                ((0, 0), False, 1.0),
+                ((0, 1), True, 1.0),
+                ((0, 2), False, 1.0),
+                # 0, 2
+                ((1, 0), True, 1.0),
+                ((1, 1), False, 1.0),
+                ((1, 2), True, 1.0),
+                # 1, 2
+                ((2, 0), False, 1.0),
+                ((2, 1), True, 1.0),
+                ((2, 2), True, 1.0)
+            ],
+            [
+                0.1, 0.5, 0.0,
+                -2, -1, -3,
+                3.0, 3.1, 3.2
+            ],
+            num_classes=3),
+        {
+            "accuracy": 66.6666667,
+        })
+
+    # num_classes = None, multi-answer
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 1
+                ((0, 0), False, 1.0),
+                ((0, 1), True, 1.0),
+                # 0, 3
+                ((1, 0), True, 1.0),
+                ((1, 1), False, 1.0),
+                ((1, 2), True, 1.0),
+                # 0
+                ((2, 0), True, 1.0)
+            ],
+            [
+                0.1, 0.5,
+                -2, -1, -3,
+                3.0
+            ],
+            num_classes=None),
+        {
+            "accuracy": 66.6666667,
+        })
+
+  def test_rank_classification_custom_weights(self):
+    # num_classes = 2
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 0
+                ((0, 0), True, 0.2),
+                ((0, 1), False, 0.2),
+                # 1
+                ((1, 0), False, 1.0),
+                ((1, 1), True, 1.0),
+                # 0
+                ((2, 0), True, 0.8),
+                ((2, 1), False, 0.8),
+                # 0
+                ((3, 0), True, 0.5),
+                ((3, 1), False, 0.5),
+            ],
+            [
+                0.1, 0.5,
+                1.0, 1.1,
+                0.3, 0.1,
+                0.6, 0.5
+            ],
+            num_classes=2),
+        {
+            "accuracy": 92.0,
+            "auc-pr": 83.3333333,
+            "auc-roc": 86.6666667,
+            "f1": 90.9090909,
+        })
+
+    # num_classes = 3
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 1
+                ((0, 0), False, 0.2),
+                ((0, 1), True, 0.2),
+                ((0, 2), False, 0.2),
+                # 0
+                ((1, 0), True, 0.5),
+                ((1, 1), False, 0.5),
+                ((1, 2), False, 0.5),
+                # 2
+                ((2, 0), False, 1.0),
+                ((2, 1), False, 1.0),
+                ((2, 2), True, 1.0)
+            ],
+            [
+                0.1, 0.5, 0.0,
+                -2, -1, -3,
+                3.0, 3.1, 3.2
+            ],
+            num_classes=3),
+        {
+            "accuracy": 70.5882353,
+            "mean_3class_f1": 48.1481481,
+        })
+
+    # num_classes = None, multi-answer
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                # 1
+                ((0, 0), False, 0.2),
+                ((0, 1), True, 0.2),
+                # 0, 3
+                ((1, 0), True, 0.5),
+                ((1, 1), False, 0.5),
+                ((1, 2), True, 0.5),
+                # 1
+                ((2, 0), True, 1.0)
+            ],
+            [
+                0.1, 0.5,
+                -2, -1, -3,
+                3.0
+            ],
+            num_classes=None),
+        {
+            "accuracy": 70.5882353,
+        })
+
+  def test_rank_classification_shuffled(self):
+    # num_classes = 2
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                ((3, 0), True, 0.5),
+                ((0, 0), True, 0.2),
+                ((1, 0), False, 1.0),
+                ((1, 1), True, 1.0),
+                ((2, 0), True, 0.8),
+                ((2, 1), False, 0.8),
+                ((3, 1), False, 0.5),
+                ((0, 1), False, 0.2),
+            ],
+            [
+                0.6,
+                0.1,
+                1.0,
+                1.1,
+                0.3,
+                0.1,
+                0.5,
+                0.5,
+            ],
+            num_classes=2),
+        {
+            "accuracy": 92.0,
+            "auc-pr": 83.3333333,
+            "auc-roc": 86.6666667,
+            "f1": 90.9090909,
+        })
+
+    # num_classes = 3
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                ((0, 0), False, 0.2),
+                ((2, 1), False, 1.0),
+                ((0, 1), True, 0.2),
+                ((1, 0), True, 0.5),
+                ((1, 1), False, 0.5),
+                ((1, 2), False, 0.5),
+                ((0, 2), False, 0.2),
+                ((2, 0), False, 1.0),
+                ((2, 2), True, 1.0)
+            ],
+            [
+                0.1,
+                3.1,
+                0.5,
+                -2,
+                -1,
+                -3,
+                0.0,
+                3.0,
+                3.2
+            ],
+            num_classes=3),
+        {
+            "accuracy": 70.5882353,
+            "mean_3class_f1": 48.1481481,
+        })
+
+    # num_classes = None, multi-answer
+    self.assertDictClose(
+        metrics.rank_classification(
+            [
+                ((0, 0), False, 0.2),
+                ((2, 0), True, 1.0),
+                ((0, 1), True, 0.2),
+                ((1, 2), True, 0.5),
+                ((1, 0), True, 0.5),
+                ((1, 1), False, 0.5),
+            ],
+            [
+                0.1,
+                3.0,
+                0.5,
+                -3,
+                -2,
+                -1,
+            ],
+            num_classes=None),
+        {
+            "accuracy": 70.5882353,
+        })
+
+  def test_rank_classification_raise(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`targets` should contain 3 elements but has 2."):
+      metrics.rank_classification(
+          [
+              ((0, 0), True),
+              ((0, 1), True),
+          ],
+          [
+              0.1, 0.5
+          ],
+          num_classes=2)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The first element of `targets` ('idx') should be 2-dimensional. Got "
+        "0."):
+      metrics.rank_classification(
+          [
+              (0, True, 1.0),
+              (0, True, 1.0),
+          ],
+          [
+              0.1, 0.5
+          ],
+          num_classes=2)
+
+  def test_coqa_tokenize(self):
+    self.assertEqual(metrics._coqa_tokenize("Maru the cat"), ["maru", "cat"])
+    self.assertEqual(metrics._coqa_tokenize("Maru  cat"), ["maru", "cat"])
+    self.assertEqual(metrics._coqa_tokenize("Maru the cat."), ["maru", "cat"])
+
+  def test_sequence_f1(self):
+    self.assertEqual(metrics._sequence_f1([], []), 1.0)
+    self.assertEqual(metrics._sequence_f1([], ["cat"]), 0.0)
+    self.assertEqual(metrics._sequence_f1(["cat"], []), 0.0)
+    self.assertEqual(metrics._sequence_f1(["dog"], ["cat"]), 0.0)
+    self.assertAlmostEqual(metrics._sequence_f1(["cat", "dog"], ["cat"]), 2 / 3)
+    self.assertAlmostEqual(metrics._sequence_f1(["cat"], ["cat", "dog"]), 2 / 3)
+
+  def test_coqa_f1(self):
+    self.assertDictClose(
+        metrics.coqa_f1([["jump box"], ["maru"]], ["jump", "cat"]),
+        {"f1": 1 / 3})
+    self.assertDictClose(
+        metrics.coqa_f1([["jump the box"], ["maru"]], ["jump", "cat"]),
+        {"f1": 1 / 3})
+
+  def test_edit_distance(self):
+    results = metrics.edit_distance(
+        ["This is a sentence."], ["This is a different SENTENCE."])
+    self.assertDictClose(
+        results, {
+            "max_edit": 1,
+            "mean_edit": 1.0,
+            "median_edit": 1.0,
+            "min_edit": 1,
+            "sum_edit": 1
+        })
+    results = metrics.edit_distance(
+        ["This is a sentence."], ["This is a different SENTENCE."], lower=False)
+    self.assertDictClose(
+        results,
+        {
+            "max_edit": 2,
+            "mean_edit": 2.0,
+            "median_edit": 2.0,
+            "min_edit": 2,
+            "sum_edit": 2
+        })
+
+    results = metrics.edit_distance(
+        ["Non-ascii separate."], ["Non-ascii🙂separate."], lower=False)
+    self.assertDictClose(
+        results,
+        {
+            "max_edit": 0,
+            "mean_edit": 0.0,
+            "median_edit": 0.0,
+            "min_edit": 0,
+            "sum_edit": 0
+        })
+
 
 if __name__ == "__main__":
   absltest.main()

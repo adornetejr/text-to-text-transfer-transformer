@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,25 +18,21 @@
 import abc
 
 
-class T5Model(object):
+class T5Model(metaclass=abc.ABCMeta):
   """Abstract Base class for T5 Model API."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def train(self, mixture_or_task_name, steps):
     raise NotImplementedError()
 
   @abc.abstractmethod
-  def eval(self, mixture_or_task_name, checkpoint_steps, summary_dir, split):
+  def eval(self, mixture_or_task_name):
     raise NotImplementedError()
 
   @abc.abstractmethod
-  def predict(self, input_file, output_file, checkpoint_steps, beam_size,
-              temperature):
+  def predict(self):
     raise NotImplementedError()
 
   @abc.abstractmethod
-  def finetune(self, mixture_or_task_name, finetune_steps, pretrained_model_dir,
-               pretrained_checkpoint_step):
+  def finetune(self, mixture_or_task_name, finetune_steps):
     raise NotImplementedError()

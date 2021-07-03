@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,3 +16,4 @@
 
 import t5.models.mesh_transformer
 from t5.models.mtf_model import MtfModel
+from t5.models.hf_model import HfPyTorchModel

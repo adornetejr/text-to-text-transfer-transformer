@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,8 +45,9 @@ setuptools.setup(
     install_requires=[
         'absl-py',
         'babel',
+        'editdistance',
         'gin-config',
-        'mesh-tensorflow[transformer]>=0.1.12',
+        'mesh-tensorflow[transformer]>=0.1.13',
         'nltk',
         'numpy',
         'pandas',
@@ -55,25 +56,25 @@ setuptools.setup(
         'scikit-learn',
         'scipy',
         'sentencepiece',
+        'seqio',
         'six>=1.14',  # TODO(adarob): Remove once rouge-score is updated.
-        'tensorflow-text~=1.15',
+        'tensorflow-text',
         'tfds-nightly',
+        'torch',
+        'transformers>=2.7.0',
     ],
     extras_require={
-        'tensorflow': ['tensorflow~=1.15'],
-        'gcp': ['gevent', 'google-api-python-client', 'google-compute-engine',
-                'google-cloud-storage', 'oauth2client'],
-        'cache-tasks': [
-            # TODO(adarob): Remove next line once avro-python3 is fixed.
-            'avro-python3!=1.9.2',
-            'apache-beam',
+        'gcp': [
+            'gevent', 'google-api-python-client', 'google-compute-engine',
+            'google-cloud-storage', 'oauth2client'
         ],
+        'cache-tasks': ['apache-beam'],
         'test': ['pytest'],
     },
     entry_points={
         'console_scripts': [
             't5_mesh_transformer = t5.models.mesh_transformer_main:console_entry_point',
-            't5_cache_tasks = t5.data.cache_tasks_main:console_entry_point'
+            't5_cache_tasks = seqio.scripts.cache_tasks_main:console_entry_point'
         ],
     },
     classifiers=[

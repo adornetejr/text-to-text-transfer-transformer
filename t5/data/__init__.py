@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,18 @@
 # limitations under the License.
 
 """Import data modules."""
-
-import t5.data.mixtures
+# pylint:disable=wildcard-import,g-bad-import-order
+from t5.data.dataset_providers import *
+from t5.data.glue_utils import *
 import t5.data.postprocessors
 import t5.data.preprocessors
-from t5.data.sentencepiece_vocabulary import SentencePieceVocabulary
-import t5.data.tasks
-import t5.data.test_utils
-from t5.data.utils import *  # pylint:disable=wildcard-import
+from t5.data.utils import *
+
+# For backward compatibility
+# TODO(adarob): Remove need for these imports.
+from seqio.dataset_providers import *
+from t5.data.dataset_providers import TaskRegistry
+from t5.data.dataset_providers import FunctionTask as Task
+from seqio.test_utils import assert_dataset
+from seqio.utils import *
+from seqio.vocabularies import *

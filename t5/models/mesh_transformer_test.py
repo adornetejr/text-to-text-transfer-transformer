@@ -1,4 +1,4 @@
-# Copyright 2020 The T5 Authors.
+# Copyright 2021 The T5 Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,17 +15,15 @@
 """Tests for t5.models.mesh_transformer."""
 
 from absl.testing import absltest
-import t5.data
-from t5.data import test_utils
+import seqio
 from t5.models import mesh_transformer
 import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
 
-tf.disable_v2_behavior()
 tf.enable_eager_execution()
 
 
-class MeshDatasetFnsTest(test_utils.FakeMixtureTest):
+class MeshDatasetFnsTest(seqio.test_utils.FakeMixtureTest):
 
   def check_ds_shape(self, ds, sequence_length):
     for k, v in tf.data.get_output_shapes(ds).items():
@@ -45,12 +43,10 @@ class MeshDatasetFnsTest(test_utils.FakeMixtureTest):
     else:
       dataset_fn = mesh_transformer.mesh_eval_dataset_fn
       split = tfds.Split.VALIDATION
-    spm = t5.data.MixtureRegistry.get(mixture_name).sentencepiece_model_path
     sequence_length = {"inputs": 13, "targets": 13}
     output = dataset_fn(
         mixture_name,
         sequence_length=sequence_length,
-        vocabulary=t5.data.SentencePieceVocabulary(spm),
         dataset_split=split,
         use_cached=use_cached)
     if train:
@@ -68,7 +64,7 @@ class MeshDatasetFnsTest(test_utils.FakeMixtureTest):
       # No postprocess_fn is supplied so it should function as a pass-through
       self.assertEqual("test", postprocess_fn("test"))
       # test_utils task has empty metric_fns list
-      self.assertEqual([], metric_fns)
+      self.assertEmpty(metric_fns)
       # Materialize the full dataset to test for errors.
       list(tfds.as_numpy(ds))
 
@@ -87,7 +83,6 @@ class MeshDatasetFnsTest(test_utils.FakeMixtureTest):
     self.verify_mesh_dataset_fn(
         mixture_name="uncached_mixture", train=False, use_cached=False,
     )
-
 
 if __name__ == "__main__":
   absltest.main()
